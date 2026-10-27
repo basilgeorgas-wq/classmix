@@ -1,6 +1,6 @@
 # ClassMix
 
-Sorts students into a top stream plus balanced classes using last year's marks, with keep-apart/together rules, locks and support-need balancing.
+Sorts students into streamed and balanced classes using last year's marks, with rules, locks, friend requests, teacher and room assignment, and printable class lists.
 
 There is **no backend**. The whole app runs in the teacher's browser, and student files are never uploaded anywhere. "The code" is just the files in this folder.
 
@@ -18,10 +18,22 @@ There is **no backend**. The whole app runs in the teacher's browser, and studen
 
 ### Useful places in `app.js`
 - `exampleData()` builds the made-up students shown on first open.
-- `assign()` picks the top stream and does the first placement.
-- `makeCost()` sets what "balanced" means. The numbers are weights: raise `25*` to care more about spreading support needs, or `6*` for gender. A broken rule costs `5000`.
+- `setupColumns()` guesses which spreadsheet columns are which, and sets the starting ranking weights.
+- `buildStudents()` turns each row into a student and calculates the ranking score (including "Make subjects comparable").
+- `assign()` fills the streamed classes in score order, then deals out everyone else.
+- `makeCost()` defines what a "good" set of classes means. The `W` line sets the strength of each goal; the sliders multiply these. A broken keep-apart/together rule costs `5000`, so rules always win.
 - `optimise()` swaps students around to lower that cost.
+- `renderChecks()` writes the messages in the Checks panel.
 - The `export` click handler decides what goes in the Excel file.
+
+### Features at a glance
+- **Ranking score:** weight any number columns (e.g. Maths ×2 + English ×1); optionally rank within each subject first.
+- **Streamed classes:** 0–3 classes filled by score, with an optional minimum score and a "just missed" list.
+- **Balancing:** marks, gender, support needs, behaviour, friend requests and avoiding last year's teacher, each with a priority slider.
+- **Rules and locks:** keep apart / keep together; moving a student locks them.
+- **Classes:** names, teachers, rooms and individual size limits (in the app or a "Classes" sheet).
+- **Drafts:** Save draft writes a `.json` file with everything; Open draft restores it exactly.
+- **Class lists:** a clean page per class, printable or saved as PDF.
 
 ## Editing the code
 

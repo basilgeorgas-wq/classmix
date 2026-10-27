@@ -15,51 +15,72 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
+  <header class="pagehead">
     <h1>ClassMix</h1>
-    <p class="lede">Upload last year's results. The highest marks go to the top stream; everyone else is spread across the other classes so each has a similar mix of marks, gender and support needs, while following your keep-apart and keep-together rules.</p>
+    <p class="lede">Rank students on last year's results, fill the top stream, then spread everyone else so each class gets a fair mix of marks, gender, support needs and behaviour, while honouring friend requests and your keep-apart rules.</p>
   </header>
 
-  <div id="banner" class="banner">Showing <strong>example data</strong> (100 made-up students and 3 example rules). Upload your own spreadsheet to replace it, or download the template to see the expected layout.</div>
+  <div id="editor" class="view">
+  <div id="banner" class="banner">Showing <strong>example data</strong>: 100 made-up students, 3 example rules and 4 example teachers. Upload your own spreadsheet to replace it, or download the template to see the layout.</div>
 
   <section class="panel setup" aria-label="Setup">
     <div class="step">
-      <h2><span>1</span>Student file</h2>
-      <label class="filebtn">Upload Excel or CSV<input id="file" type="file" accept=".xlsx,.xls,.csv"></label>
+      <h2><span>1</span>Files</h2>
+      <label class="filebtn">Upload student file (Excel or CSV)<input id="file" type="file" accept=".xlsx,.xls,.csv"></label>
+      <div class="btnrow">
+        <label class="filebtn">Open draft<input id="draftFile" type="file" accept=".json,application/json"></label>
+        <button class="ghost" id="saveDraft" type="button">Save draft</button>
+      </div>
       <button class="ghost" id="template" type="button">Download template</button>
-      <div class="note" id="fileinfo">One row per student with a header row. An optional sheet called “Rules” adds keep-apart and keep-together rules.</div>
+      <div class="note" id="fileinfo">One row per student with a header row. Optional sheets: “Rules” (keep apart / together) and “Classes” (names, teachers, rooms, sizes). Save a draft to carry on later.</div>
     </div>
     <div class="step">
       <h2><span>2</span>Columns</h2>
       <label class="f">Student name<select id="colName"></select></label>
-      <label class="f">Mark to rank by<select id="colMark"></select></label>
       <div class="row2">
         <label class="f">Student ID<select id="colId"></select></label>
         <label class="f">Gender<select id="colGender"></select></label>
+        <label class="f">Support needs<select id="colSupport"></select></label>
+        <label class="f">Behaviour<select id="colBehav"></select></label>
+        <label class="f">Last year's teacher<select id="colLastT"></select></label>
+        <label class="f">Friend requests<select id="colFriends"></select></label>
       </div>
-      <label class="f">Support needs (any “Yes” or note counts)<select id="colSupport"></select></label>
+      <div class="note">Support and behaviour: any entry other than blank or “No” counts, and the entry (for example “Reading support”) shows on the class lists. Friends: names or IDs separated by commas.</div>
     </div>
     <div class="step">
-      <h2><span>3</span>Classes</h2>
+      <h2><span>3</span>Ranking score</h2>
+      <div class="note">Give each column a weight. 0 means it isn't used; 2 counts twice as much as 1.</div>
+      <div class="weights" id="weights"></div>
+      <div class="formula" id="formula"></div>
+      <label class="chk"><input id="comparable" type="checkbox"> Make subjects comparable</label>
+      <div class="note">Ranks students within each subject first, so a harder subject with lower marks doesn't count for less.</div>
+    </div>
+    <div class="step wide">
+      <h2><span>4</span>Classes</h2>
       <div class="row2">
         <label class="f">Number of classes<input id="nClasses" type="number" min="2" max="20" value="4"></label>
         <label class="f">Students per class<input id="size" type="number" min="1" max="60" value="25"></label>
+        <label class="f">Streamed classes<select id="streamed"><option value="0">None</option><option value="1" selected>1 top class</option><option value="2">2 classes</option><option value="3">3 classes</option></select></label>
+        <label class="f">Top stream minimum<input id="cutoff" type="number" min="0" step="any" placeholder="None"></label>
       </div>
-      <label class="chk"><input id="topOn" type="checkbox" checked> First class is a top stream</label>
-      <label class="chk"><input id="genderBal" type="checkbox" checked> Balance gender</label>
-      <label class="chk"><input id="supBal" type="checkbox" checked> Spread support needs evenly</label>
+      <div class="note">Streamed classes are filled in mark order. A minimum score leaves places empty rather than filling them with lower marks. Set a different size for any class in the Summary.</div>
     </div>
-    <div class="step">
-      <h2><span>4</span>Assign</h2>
-      <button id="run" type="button">Assign students</button>
-      <div class="note">Locked students stay where they are. Moving a student by hand locks them automatically.</div>
+    <div class="step wide">
+      <h2><span>5</span>What matters most</h2>
+      <div class="note">How hard ClassMix works on each goal in the mixed classes. Keep-apart and keep-together rules always win.</div>
+      <div class="pri" id="pri"></div>
     </div>
   </section>
+
+  <div class="panel assignbar">
+    <div class="note" style="max-width:62ch">Locked students stay where they are. Moving a student by hand locks them. Keep-apart and keep-together rules always come first.</div>
+    <div class="actions"><span class="stale" id="stale" hidden>Settings changed</span><button id="run" type="button">Assign students</button></div>
+  </div>
 
   <div class="duo">
     <section class="panel" aria-label="Rules">
       <h2>Rules</h2>
-      <p class="note" style="margin:4px 0 0">Rules apply to the mixed classes. The top stream is chosen on marks alone.</p>
+      <p class="note" style="margin:4px 0 0">Rules apply to the mixed classes. Streamed classes are chosen on marks alone.</p>
       <form class="ruleform" id="ruleForm">
         <div class="pick">
           <label class="f">Student<input id="ruleA" type="text" list="studentList" placeholder="Start typing a name" autocomplete="off"></label>
@@ -82,14 +103,36 @@
       <h2>Summary</h2>
       <div class="actions">
         <label class="f" style="min-width:200px"><input id="search" type="text" placeholder="Find a student"></label>
-        <button id="export" type="button">Export to Excel</button>
+        <button id="export" type="button" class="ghost">Export to Excel</button>
+        <button id="viewLists" type="button">View class lists</button>
       </div>
     </div>
     <div class="tablebox"><table class="sum" id="sum"></table></div>
   </section>
 
-  <div class="legend"><span><span class="mono" style="color:var(--accent)">&#9679;</span> Lock button keeps a student in place</span><span><span class="sup" style="font-size:.62rem;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px">S</span> Support needs</span><span><span style="color:var(--warn)">&#9612;</span> Breaks a rule</span></div>
+  <div class="legend">
+    <span>Padlock: keeps a student in place</span>
+    <span><span class="sup">S</span> Support needs</span>
+    <span><span class="sup b">B</span> Behaviour</span>
+    <span><span style="color:var(--warn)">&#9612;</span> Breaks a rule or request</span>
+    <span>Edit class names, teachers, rooms and sizes in the Summary</span>
+  </div>
   <section class="classes" id="classes" aria-label="Classes"></section>
+  </div>
+
+  <section id="lists" class="view" hidden aria-label="Class lists">
+    <div class="listbar">
+      <button id="backBtn" type="button" class="ghost">&larr; Back to editing</button>
+      <div class="actions">
+        <label class="chk"><input id="showIds" type="checkbox" checked> Student IDs</label>
+        <label class="chk"><input id="showSupport" type="checkbox" checked> Support needs</label>
+        <label class="chk"><input id="showBehav" type="checkbox"> Behaviour</label>
+        <label class="chk"><input id="showMarks" type="checkbox"> Scores</label>
+        <button id="printBtn" type="button">Print or save as PDF</button>
+      </div>
+    </div>
+    <div class="rosters" id="rosters"></div>
+  </section>
 </div>
 <div id="toast" class="toast" hidden></div>
 
