@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClassMix</title>
+<meta name="description" content="Sort students into a top stream and balanced classes from last year's marks.">
+<meta name="theme-color" content="#1f5f8b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ClassMix</h1>
+    <p class="lede">Upload last year's results. The highest marks go to the top stream; everyone else is spread across the other classes so each has a similar mix of marks, gender and support needs, while following your keep-apart and keep-together rules.</p>
+  </header>
+
+  <div id="banner" class="banner">Showing <strong>example data</strong> (100 made-up students and 3 example rules). Upload your own spreadsheet to replace it, or download the template to see the expected layout.</div>
+
+  <section class="panel setup" aria-label="Setup">
+    <div class="step">
+      <h2><span>1</span>Student file</h2>
+      <label class="filebtn">Upload Excel or CSV<input id="file" type="file" accept=".xlsx,.xls,.csv"></label>
+      <button class="ghost" id="template" type="button">Download template</button>
+      <div class="note" id="fileinfo">One row per student with a header row. An optional sheet called “Rules” adds keep-apart and keep-together rules.</div>
+    </div>
+    <div class="step">
+      <h2><span>2</span>Columns</h2>
+      <label class="f">Student name<select id="colName"></select></label>
+      <label class="f">Mark to rank by<select id="colMark"></select></label>
+      <div class="row2">
+        <label class="f">Student ID<select id="colId"></select></label>
+        <label class="f">Gender<select id="colGender"></select></label>
+      </div>
+      <label class="f">Support needs (any “Yes” or note counts)<select id="colSupport"></select></label>
+    </div>
+    <div class="step">
+      <h2><span>3</span>Classes</h2>
+      <div class="row2">
+        <label class="f">Number of classes<input id="nClasses" type="number" min="2" max="20" value="4"></label>
+        <label class="f">Students per class<input id="size" type="number" min="1" max="60" value="25"></label>
+      </div>
+      <label class="chk"><input id="topOn" type="checkbox" checked> First class is a top stream</label>
+      <label class="chk"><input id="genderBal" type="checkbox" checked> Balance gender</label>
+      <label class="chk"><input id="supBal" type="checkbox" checked> Spread support needs evenly</label>
+    </div>
+    <div class="step">
+      <h2><span>4</span>Assign</h2>
+      <button id="run" type="button">Assign students</button>
+      <div class="note">Locked students stay where they are. Moving a student by hand locks them automatically.</div>
+    </div>
+  </section>
+
+  <div class="duo">
+    <section class="panel" aria-label="Rules">
+      <h2>Rules</h2>
+      <p class="note" style="margin:4px 0 0">Rules apply to the mixed classes. The top stream is chosen on marks alone.</p>
+      <form class="ruleform" id="ruleForm">
+        <div class="pick">
+          <label class="f">Student<input id="ruleA" type="text" list="studentList" placeholder="Start typing a name" autocomplete="off"></label>
+          <label class="f">and student<input id="ruleB" type="text" list="studentList" placeholder="Start typing a name" autocomplete="off"></label>
+        </div>
+        <select id="ruleType" aria-label="Rule type"><option value="apart">Keep apart</option><option value="together">Keep together</option></select>
+        <button type="submit">Add rule</button>
+      </form>
+      <datalist id="studentList"></datalist>
+      <ul class="rules" id="rules"></ul>
+    </section>
+    <section class="panel" aria-label="Checks">
+      <h2>Checks</h2>
+      <ul class="checks" id="checks"></ul>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Summary">
+    <div class="actions" style="justify-content:space-between;margin-bottom:10px">
+      <h2>Summary</h2>
+      <div class="actions">
+        <label class="f" style="min-width:200px"><input id="search" type="text" placeholder="Find a student"></label>
+        <button id="export" type="button">Export to Excel</button>
+      </div>
+    </div>
+    <div class="tablebox"><table class="sum" id="sum"></table></div>
+  </section>
+
+  <div class="legend"><span><span class="mono" style="color:var(--accent)">&#9679;</span> Lock button keeps a student in place</span><span><span class="sup" style="font-size:.62rem;font-weight:600;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px">S</span> Support needs</span><span><span style="color:var(--warn)">&#9612;</span> Breaks a rule</span></div>
+  <section class="classes" id="classes" aria-label="Classes"></section>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
