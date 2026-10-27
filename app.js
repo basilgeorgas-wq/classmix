@@ -29,7 +29,18 @@ function breakdown(L, flag, note){
 }
 const nameList = (L, fn, max=6) => esc(L.slice(0,max).map(fn).join(", ")) + (L.length>max ? ` and ${L.length-max} more` : "");
 let tt; function toast(m){ const t=$("toast"); t.textContent=m; t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>t.hidden=true,2800); }
-function markStale(){ $("stale").hidden = false; }
+function markStale(){ $("stale").hidden = false; setDirty(true); }
+let dirty = false;
+function setDirty(v){ dirty = v; $("unsaved").hidden = !v; }
+// warn before closing the app with work that hasn't been saved as a draft
+window.addEventListener("beforeunload", e=>{ if(dirty){ e.preventDefault(); e.returnValue = ""; } });
+function showCurrent(html, example){
+  const c = $("current"); c.innerHTML = html; c.classList.toggle("example", !!example);
+  c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash");
+  $("banner").classList.remove("flash"); void $("banner").offsetWidth; $("banner").classList.add("flash");
+  $("banner").scrollIntoView({block:"nearest", behavior:"smooth"});
+}
+const clock = () => new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
 
 /* ---------- settings ---------- */
 const num = (id, d) => { const v = parseInt($(id).value); return isNaN(v) ? d : v; };
@@ -186,7 +197,7 @@ function assign(){
   });
   optimise(start, mixed);
   $("stale").hidden = true;
-  render();
+  render(); setDirty(true);
 }
 
 // score a placement of the mixed classes: lower is better
@@ -333,7 +344,7 @@ function render(){
     if(f==="t"){ teachers[c] = v; if(students.some(s=>s.lastTeacher)) markStale(); }
     if(f==="r") rooms[c] = v;
     if(f==="s"){ sizes[c] = Math.max(0, parseInt(v)||0); markStale(); }
-    renderCards(); renderChecks(); if(f==="n") renderRuleList();
+    renderCards(); renderChecks(); if(f==="n") renderRuleList(); setDirty(true);
   }));
   renderCards(); renderChecks(); renderRuleList();
 }
@@ -356,12 +367,12 @@ function renderCards(){
   }).join("");
   $("classes").querySelectorAll("select").forEach(sel=>sel.addEventListener("change",e=>{
     const s = students.find(x=>x.key===+e.target.dataset.k); s.cls = +e.target.value; s.locked = true; locks[s.ref] = s.cls;
-    toast(`Moved ${s.name} to ${classNames[s.cls]} and locked them`); render();
+    toast(`Moved ${s.name} to ${classNames[s.cls]} and locked them`); render(); setDirty(true);
   }));
   $("classes").querySelectorAll(".lock").forEach(btn=>btn.addEventListener("click",()=>{
     const s = students.find(x=>x.key===+btn.dataset.k); s.locked = !s.locked;
     if(s.locked) locks[s.ref] = s.cls; else delete locks[s.ref];
-    toast(s.locked ? `${s.name} locked in ${classNames[s.cls]}` : `${s.name} unlocked`); render();
+    toast(s.locked ? `${s.name} locked in ${classNames[s.cls]}` : `${s.name} unlocked`); render(); setDirty(true);
   }));
   if(q) document.querySelector(".cls li.hit")?.scrollIntoView({block:"nearest"});
 }
@@ -405,8 +416,11 @@ $("file").addEventListener("change", async e=>{
     $("banner").innerHTML = `Loaded <strong>${esc(f.name)}</strong>: ${rows.length} students from “${esc(info.mainName)}”${info.rulesName?`, ${plural(info.nRules,"rule")}`:""}${info.clsName?`, ${info.nCls} classes with teachers`:""}. Check the columns and ranking score, then adjust if needed.`;
     $("fileinfo").textContent = `Columns found: ${headers.join(", ")}`;
     assign();
+    showCurrent(`Using <strong>${esc(f.name)}</strong>: ${plural(students.length,"student")}, loaded at ${clock()}`);
+    toast(`Loaded ${f.name}: ${plural(students.length,"student")}`);
   }catch(err){
     $("banner").innerHTML = `Couldn't read that file. Make sure it's an .xlsx, .xls or .csv with a header row.`;
+    toast("Couldn't read that file");
   }
   e.target.value = "";
 });
@@ -421,13 +435,13 @@ document.querySelectorAll(".setup select, .setup input:not([type=file])").forEac
 async function saveFile(filename, blob){
   if(window.claude && window.claude.use){
     const dl = await window.claude.use("downloads");
-    if(!dl) return toast("Saving files isn't available in this view");
-    try{ await dl.save({filename, data:blob}); toast(`Saved ${filename}`); }
-    catch(err){ if(err?.code!=="declined") toast("Couldn't save the file. Try again in a moment."); }
+    if(!dl){ toast("Saving files isn't available in this view"); return false; }
+    try{ await dl.save({filename, data:blob}); toast(`Saved ${filename}`); return true; }
+    catch(err){ if(err?.code!=="declined") toast("Couldn't save the file. Try again in a moment."); return false; }
   } else {
     const url = URL.createObjectURL(blob), a = document.createElement("a");
     a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 4000); toast(`Saved ${filename}`);
+    setTimeout(()=>URL.revokeObjectURL(url), 4000); toast(`Saved ${filename}`); return true;
   }
 }
 const saveWorkbook = (wb, filename) => saveFile(filename, new Blob([XLSX.write(wb,{bookType:"xlsx",type:"array"})], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
@@ -479,7 +493,7 @@ $("template").addEventListener("click", ()=>{
 });
 
 /* ---------- drafts ---------- */
-$("saveDraft").addEventListener("click", ()=>{
+async function saveDraft(){
   if(!rows.length) return toast("Nothing to save yet");
   const draft = {app:"ClassMix", version:2, savedAt:new Date().toISOString(), fileName, rows,
     settings:{ cols:Object.fromEntries(COLS.map(id=>[id,$(id).value])), markWeights, comparable:$("comparable").checked,
@@ -487,8 +501,13 @@ $("saveDraft").addEventListener("click", ()=>{
       priorities:Object.fromEntries(PRI.map(([id])=>[id,$(id).value])) },
     classNames, teachers, rooms, sizes, rules, locks, placements:Object.fromEntries(students.map(s=>[s.ref,s.cls])) };
   const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  saveFile(`classmix-draft-${stamp}.json`, new Blob([JSON.stringify(draft)], {type:"application/json"}));
-});
+  const name = `classmix-draft-${stamp}.json`;
+  if(await saveFile(name, new Blob([JSON.stringify(draft)], {type:"application/json"}))){
+    setDirty(false); toast(`Draft saved as ${name}. Use Open draft to carry on later.`);
+  }
+}
+$("saveDraft").addEventListener("click", saveDraft);
+$("saveDraft2").addEventListener("click", saveDraft);
 $("draftFile").addEventListener("change", async e=>{
   const f = e.target.files[0]; if(!f) return;
   try{
@@ -515,8 +534,12 @@ $("draftFile").addEventListener("change", async e=>{
     } else assign();
     $("banner").innerHTML = `Opened draft <strong>${esc(f.name)}</strong>${d.savedAt?` saved ${esc(new Date(d.savedAt).toLocaleString())}`:""}: ${rows.length} students, ${plural(rules.length,"rule")}. Everything is as you left it.`;
     $("fileinfo").textContent = `Columns found: ${headers.join(", ")}`;
+    setDirty(false);
+    showCurrent(`Using draft <strong>${esc(f.name)}</strong>${d.fileName&&d.fileName!=="example"?` (from ${esc(d.fileName)})`:""}: ${plural(students.length,"student")}, opened at ${clock()}`);
+    toast(`Opened draft: ${plural(students.length,"student")}, carry on where you left off`);
   }catch(err){
     $("banner").innerHTML = `Couldn't open that file as a ClassMix draft. Choose a .json file saved with “Save draft”.`;
+    toast("Couldn't open that draft");
   }
   e.target.value = "";
 });
@@ -560,4 +583,4 @@ rows = exampleData(); headers = Object.keys(rows[0]); fileName = "example"; setu
 teachers = ["Ms Chen","Mr Rossi","Mrs Haddad","Mr Walker"]; rooms = ["B12","B14","C3","C5"];
 const ex = [...students].sort(byMark).slice(25);
 rules = [{type:"apart", a:ex[0].ref, b:ex[5].ref}, {type:"apart", a:ex[10].ref, b:ex[16].ref}, {type:"together", a:ex[20].ref, b:ex[40].ref}];
-assign(); route();
+assign(); setDirty(false); route();

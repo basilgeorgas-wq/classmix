@@ -60,6 +60,11 @@ button:focus-visible,select:focus-visible,input:focus-visible,.filebtn:focus-wit
 .assignbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
 .assignbar button{padding:10px 22px;font-size:1rem}
 .stale{font-size:.85rem;font-weight:600;color:var(--top)}
+.current{font-size:.86rem;background:var(--ok-soft);border-left:4px solid var(--ok);border-radius:6px;padding:7px 10px;overflow-wrap:anywhere}
+.current.example{background:var(--soft);border-left-color:var(--accent)}
+.unsaved{font-size:.86rem;background:var(--top-soft);border-left:4px solid var(--top);border-radius:6px;padding:7px 10px}
+.unsaved button{padding:2px 10px;font-size:.82rem;margin-left:6px}
+@media (prefers-reduced-motion:no-preference){.flash{animation:flash 1.6s ease-out}@keyframes flash{0%,30%{box-shadow:0 0 0 3px var(--ok)}100%{box-shadow:0 0 0 3px transparent}}}
 .duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
 .ruleform{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}
 .ruleform .pick{display:grid;grid-template-columns:1fr 1fr;gap:8px;grid-column:1/-1}

@@ -26,11 +26,13 @@
   <section class="panel setup" aria-label="Setup">
     <div class="step">
       <h2><span>1</span>Files</h2>
+      <div class="current example" id="current" role="status">Using example data</div>
       <label class="filebtn">Upload student file (Excel or CSV)<input id="file" type="file" accept=".xlsx,.xls,.csv"></label>
       <div class="btnrow">
         <label class="filebtn">Open draft<input id="draftFile" type="file" accept=".json,application/json"></label>
         <button class="ghost" id="saveDraft" type="button">Save draft</button>
       </div>
+      <div class="unsaved" id="unsaved" hidden role="status">Unsaved changes. Save a draft so you can carry on later.<button type="button" id="saveDraft2">Save draft</button></div>
       <button class="ghost" id="template" type="button">Download template</button>
       <div class="note" id="fileinfo">One row per student with a header row. Optional sheets: “Rules” (keep apart / together) and “Classes” (names, teachers, rooms, sizes). Save a draft to carry on later.</div>
     </div>
