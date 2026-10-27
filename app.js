@@ -3,7 +3,9 @@ const $ = id => document.getElementById(id);
 let rows = [], headers = [], students = [], classNames = [], rules = [], locks = {}, skipped = [];
 const LOCK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>';
 const esc = t => String(t ?? "").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const avg = list => list.length ? list.reduce((t,s)=>t+s.mark,0)/list.length : 0;
+const avg = list => { const m = list.filter(s=>s.mark!=null); return m.length ? m.reduce((t,s)=>t+s.mark,0)/m.length : 0; };
+const plural = (n, one, many) => `${n} ${n===1 ? one : (many || one+"s")}`;
+const byMark = (a,b) => (b.mark ?? -1)-(a.mark ?? -1) || a.name.localeCompare(b.name);
 const yes = v => { const t = String(v ?? "").trim().toLowerCase(); return t !== "" && !["no","n","0","false","none","-","nil"].includes(t); };
 
 /* ---------- example data ---------- */
@@ -44,9 +46,9 @@ function buildStudents(){
   skipped = []; const list = [];
   rows.forEach((r,i)=>{
     const name = String(r[nameC] ?? "").trim(); const m = parseFloat(r[markC]);
-    if(isNaN(m)){ if(name) skipped.push(name); return; }
+    if(!name) return;
     const id = idC ? String(r[idC] ?? "").trim() : "";
-    list.push({key:i, ref:id||name, name:name||"(no name)", id, gender:gC?String(r[gC]??"").trim().toUpperCase():"", support:sC?yes(r[sC]):false, mark:m, cls:0});
+    list.push({key:i, ref:id||name, name, id, gender:gC?String(r[gC]??"").trim().toUpperCase():"", support:sC?yes(r[sC]):false, mark:isNaN(m)?null:m, noMark:isNaN(m), cls:0});
   });
   return list;
 }
@@ -67,9 +69,10 @@ function assign(){
   const topOn = $("topOn").checked, start = topOn ? 1 : 0, mixed = k - start;
   students = buildStudents();
   students.forEach(s=>{ s.locked = locks[s.ref] !== undefined && locks[s.ref] < k; if(s.locked) s.cls = locks[s.ref]; });
-  students.sort((a,b)=>b.mark-a.mark || a.name.localeCompare(b.name));
+  students.sort(byMark);
 
-  let free = students.filter(s=>!s.locked);
+  let free = students.filter(s=>!s.locked && !s.noMark);
+  const noMark = students.filter(s=>!s.locked && s.noMark);
   if(topOn){
     const room = Math.max(0, size - students.filter(s=>s.locked && s.cls===0).length);
     free.slice(0, room).forEach(s=>s.cls=0);
@@ -78,6 +81,12 @@ function assign(){
   // snake draft the rest, then improve with swaps
   let dir = 1, pos = 0;
   free.forEach(s=>{ s.cls = start+pos; pos+=dir; if(pos===mixed||pos<0){ dir=-dir; pos+=dir; } });
+  // students with no mark go into the smallest mixed class
+  noMark.forEach(s=>s.cls = -1);
+  noMark.forEach(s=>{
+    const sizes = Array.from({length:mixed},(_,i)=>students.filter(x=>x.cls===start+i).length);
+    s.cls = start + sizes.indexOf(Math.min(...sizes));
+  });
   optimise(start, mixed, size);
 
   classNames = Array.from({length:k},(_,i)=> classNames[i] && !/^Class \d+$/.test(classNames[i]) ? classNames[i] : `Class ${i+1}`);
@@ -87,7 +96,7 @@ function assign(){
 // score a placement of the mixed classes: lower is better
 function makeCost(start, mixed, size){
   const pool = students.filter(s=>s.cls>=start);
-  const T = pool.length / mixed, overall = avg(pool);
+  const T = pool.length / mixed, overall = avg(pool), marked = Array(mixed).fill(0);
   const gBal = $("genderBal").checked && pool.some(s=>s.gender), sBal = $("supBal").checked && pool.some(s=>s.support);
   const gVals = [...new Set(pool.map(s=>s.gender).filter(Boolean))];
   const gShare = Object.fromEntries(gVals.map(g=>[g, pool.filter(s=>s.gender===g).length/pool.length]));
@@ -95,13 +104,13 @@ function makeCost(start, mixed, size){
   const map = byRef();
   const rel = rules.map(r=>[r.type, map[r.a], map[r.b]]).filter(([,a,b])=>a&&b);
   return () => {
-    const n = Array(mixed).fill(0), sum = Array(mixed).fill(0), sup = Array(mixed).fill(0);
+    const n = Array(mixed).fill(0), sum = Array(mixed).fill(0), sup = Array(mixed).fill(0); marked.fill(0);
     const g = gVals.map(()=>Array(mixed).fill(0));
-    for(const s of pool){ const c = s.cls-start; n[c]++; sum[c]+=s.mark; if(s.support) sup[c]++; if(gBal){ const gi=gVals.indexOf(s.gender); if(gi>=0) g[gi][c]++; } }
+    for(const s of pool){ const c = s.cls-start; n[c]++; if(s.mark!=null){ sum[c]+=s.mark; marked[c]++; } if(s.support) sup[c]++; if(gBal){ const gi=gVals.indexOf(s.gender); if(gi>=0) g[gi][c]++; } }
     let cost = 0;
     for(let c=0;c<mixed;c++){
       cost += 60*(n[c]-T)**2 + (n[c]>size ? 400*(n[c]-size)**2 : 0);
-      if(n[c]) cost += 2*(sum[c]/n[c]-overall)**2;
+      if(marked[c]) cost += 2*(sum[c]/marked[c]-overall)**2;
       if(sBal) cost += 25*(sup[c]-n[c]*sShare)**2;
       if(gBal) gVals.forEach((gv,gi)=> cost += 6*(g[gi][c]-n[c]*gShare[gv])**2);
     }
@@ -146,14 +155,18 @@ function renderChecks(){
   ruleStatus().forEach(({r,a,b,state})=>{
     if(state==="missing") items.push(["bad",`Rule can't be checked: ${esc(!a?r.a:r.b)} isn't in the student list.`]);
     else if(state==="broken"){
-      const why = topOn && (a.cls===0 || b.cls===0) ? " One or both are in the top stream on marks." : "";
+      const inTop = topOn && (a.cls===0 || b.cls===0);
+      const why = !inTop ? "" : r.type==="apart"
+        ? ` Both earned the top stream on marks. To separate them, use the dropdown to move one to another class (this locks them there).`
+        : ` Only one earned the top stream on marks. To keep them together, use the dropdown to move one so they share a class (this locks them there).`;
       items.push(["bad", r.type==="apart"
         ? `Keep apart: <strong>${esc(a.name)}</strong> and <strong>${esc(b.name)}</strong> are both in ${esc(classNames[a.cls])}.${why}`
         : `Keep together: <strong>${esc(a.name)}</strong> is in ${esc(classNames[a.cls])} but <strong>${esc(b.name)}</strong> is in ${esc(classNames[b.cls])}.${why}`]);
     }
   });
-  if(skipped.length) items.push(["info",`${skipped.length} student(s) left out because their mark is blank or not a number: ${esc(skipped.slice(0,6).join(", "))}${skipped.length>6?"…":""}`]);
-  if(!items.some(i=>i[0]==="bad")) items.unshift(["ok", `All good. ${rules.length ? `All ${rules.length} rule${rules.length>1?"s are":" is"} met, and e` : "E"}very class has ${size} or fewer students.`]);
+  const nm = students.filter(s=>s.noMark);
+  if(nm.length) items.push(["info",`${plural(nm.length,"student has","students have")} no mark, so ${nm.length===1?"was":"were"} placed in the smallest class${nm.length===1?"":"es"} for you to check: ${esc(nm.slice(0,6).map(s=>`${s.name} (${classNames[s.cls]})`).join(", "))}${nm.length>6?"…":""}`]);
+  if(!items.some(i=>i[0]==="bad")) items.unshift(["ok", `All good. ${rules.length ? `${rules.length===1?"The rule is":`All ${rules.length} rules are`} met, and e` : "E"}very class has ${size} or fewer students.`]);
   $("checks").innerHTML = items.map(([t,m])=>`<li class="${t==="bad"?"":t}">${m}</li>`).join("");
 }
 
@@ -188,12 +201,12 @@ function render(){
   const gVals = [...new Set(students.map(s=>s.gender).filter(Boolean))].sort();
   let h = `<thead><tr><th>Class</th><th>Students</th><th>Average</th><th>Lowest</th><th>Highest</th>${hasG?"<th>Gender</th>":""}${hasS?"<th>Support</th>":""}<th>Locked</th></tr></thead><tbody>`;
   for(let c=0;c<k;c++){
-    const L = students.filter(s=>s.cls===c), ms = L.map(s=>s.mark);
+    const L = students.filter(s=>s.cls===c), ms = L.map(s=>s.mark).filter(m=>m!=null);
     h += `<tr><td><input type="text" id="cn${c}" data-c="${c}" value="${esc(classNames[c])}" aria-label="Class name">${c===0&&topOn?'<span class="pill">Top</span>':""}</td>
       <td class="mono ${L.length>size?"over":""}">${L.length}</td>
       <td class="mono">${L.length?avg(L).toFixed(1):"–"}</td>
-      <td class="mono">${L.length?Math.min(...ms):"–"}</td>
-      <td class="mono">${L.length?Math.max(...ms):"–"}</td>
+      <td class="mono">${ms.length?Math.min(...ms):"–"}</td>
+      <td class="mono">${ms.length?Math.max(...ms):"–"}</td>
       ${hasG?`<td class="mono">${gVals.map(g=>`${esc(g)} ${L.filter(s=>s.gender===g).length}`).join(" · ")}</td>`:""}
       ${hasS?`<td class="mono">${L.filter(s=>s.support).length}</td>`:""}
       <td class="mono">${L.filter(s=>s.locked).length}</td></tr>`;
@@ -207,11 +220,11 @@ function renderCards(){
   const broken = new Set(); ruleStatus().forEach(({a,b,state})=>{ if(state==="broken"){ broken.add(a.ref); broken.add(b.ref); } });
   const opts = classNames.map((n,i)=>`<option value="${i}">${esc(n)}</option>`).join("");
   $("classes").innerHTML = classNames.map((n,c)=>{
-    const L = students.filter(s=>s.cls===c).sort((a,b)=>b.mark-a.mark);
+    const L = students.filter(s=>s.cls===c).sort(byMark);
     return `<article class="cls ${c===0&&topOn?"top":""}"><header><h2>${esc(n)}</h2><span class="meta mono">${L.length} · avg ${L.length?avg(L).toFixed(1):"–"}</span></header>
     <ol>${L.map(s=>`<li class="${broken.has(s.ref)?"broken":""} ${q&&s.name.toLowerCase().includes(q)?"hit":""}">
       <button class="lock" type="button" data-k="${s.key}" aria-pressed="${s.locked}" aria-label="${s.locked?"Unlock":"Lock"} ${esc(s.name)}" title="${s.locked?"Locked: stays here when you re-run":"Lock in this class"}">${LOCK_SVG}</button>
-      <span class="nm" title="${esc(label(s))}">${esc(s.name)}${s.support?'<span class="sup" title="Support needs">S</span>':""}</span><span class="mono">${s.mark}</span>
+      <span class="nm" title="${esc(label(s))}">${esc(s.name)}${s.support?'<span class="sup" title="Support needs">S</span>':""}</span><span class="mono" ${s.noMark?'title="No mark in the file"':""}>${s.mark ?? "–"}</span>
       <select data-k="${s.key}" aria-label="Move ${esc(s.name)}">${opts.replace(`value="${c}"`,`value="${c}" selected`)}</select></li>`).join("")}</ol></article>`;
   }).join("");
   $("classes").querySelectorAll("select").forEach(sel=>sel.addEventListener("change",e=>{
@@ -270,13 +283,13 @@ async function saveWorkbook(wb, filename){
 $("export").addEventListener("click", ()=>{
   if(!students.length) return toast("Nothing to export yet");
   const wb = XLSX.utils.book_new();
-  const all = [...students].sort((a,b)=>a.cls-b.cls || b.mark-a.mark).map(s=>({"Class":classNames[s.cls],"Student ID":s.id,"Name":s.name,"Gender":s.gender,"Support needs":s.support?"Yes":"","Mark":s.mark,"Locked":s.locked?"Yes":""}));
+  const all = [...students].sort((a,b)=>a.cls-b.cls || byMark(a,b)).map(s=>({"Class":classNames[s.cls],"Student ID":s.id,"Name":s.name,"Gender":s.gender,"Support needs":s.support?"Yes":"","Mark":s.mark ?? "","Locked":s.locked?"Yes":"","Note":s.noMark?"No mark: placed in smallest class":""}));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(all), "All students");
   const used = new Set(["All students","Rules"]);
   classNames.forEach((n,c)=>{
     let nm = n.replace(/[\\\/\?\*\[\]:]/g," ").slice(0,31).trim() || `Class ${c+1}`;
     while(used.has(nm)) nm = nm.slice(0,28)+" "+(c+1); used.add(nm);
-    const L = students.filter(s=>s.cls===c).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>({"Student ID":s.id,"Name":s.name,"Gender":s.gender,"Support needs":s.support?"Yes":"","Mark":s.mark}));
+    const L = students.filter(s=>s.cls===c).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>({"Student ID":s.id,"Name":s.name,"Gender":s.gender,"Support needs":s.support?"Yes":"","Mark":s.mark ?? ""}));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(L.length?L:[{Name:""}]), nm);
   });
   const rs = ruleStatus().map(({r,a,b,state})=>({"Rule":r.type==="apart"?"Keep apart":"Keep together","Student 1":a?(a.id||a.name):r.a,"Student 2":b?(b.id||b.name):r.b,"Status":state==="ok"?"Met":state==="missing"?"Not found":"Broken"}));
@@ -307,6 +320,6 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http")){
 
 /* ---------- start with example data ---------- */
 rows = exampleData(); headers = Object.keys(rows[0]); setupColumns(); students = buildStudents();
-const ex = [...students].sort((a,b)=>b.mark-a.mark).slice(25);
+const ex = [...students].sort(byMark).slice(25);
 rules = [{type:"apart", a:ex[0].ref, b:ex[5].ref}, {type:"apart", a:ex[10].ref, b:ex[16].ref}, {type:"together", a:ex[20].ref, b:ex[40].ref}];
 assign();
